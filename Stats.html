@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+
+<html>
+    
+    <head>
+        <meta charset="utf-8">
+            <title>BirdStats</title>
+    </head>
+    
+    <body>
+        <div id="header">
+            <table width="400px">
+                <tr><td>Station ID</td><td id="tid"></td></tr>
+                <tr><td>Latitude</td><td id="tlat"></td></tr>
+                <tr><td>Longitude</td><td id="tlon"></td></tr>
+                <tr><td>Start</td><td id="tstart"></td></tr>
+                <tr><td>End</td><td id="tend"></td></tr>
+                <tr><td>Data Count</td><td id="tcount"></td></tr>
+            </table>
+        </div>
+        <!-- Load chart.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script type="module">
+            var station = "2707"; // Set station id
+            var url = "https://app.birdweather.com/graphql";
+            var maxpage = 3; // Limit on pages to fetch
+            var dayQuery = `
+                {
+                    station(id: [station]) {
+                        detections[detarg] {
+                            nodes {
+                                timestamp
+                                species {
+                                    scientificName
+                                    commonName
+                                }
+                                probability
+                                certainty
+                                confidence
+                                score
+                                coords {
+                                    lat
+                                    lon
+                                }
+                            }
+                            pageInfo {
+                                endCursor
+                                hasNextPage
+                            }
+                        }
+                    }
+                }`;
+            var detargs = '';
+            var resp;
+            var detections = [];
+            var paging = true;
+            var thisQuery;
+            detargs = "";
+            for (let i = 0; i < maxpage; i++) {
+                thisQuery = dayQuery.replace("[station]", station);
+                thisQuery = thisQuery.replace("[detarg]", detargs);
+                resp = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    body: JSON.stringify({ query: thisQuery }),
+                    }).then(r => r.json());
+                detections = detections.concat(resp.data.station.detections.nodes);
+                paging = resp.data.station.detections.pageInfo.hasNextPage;
+                detargs = '(after: "' +  resp.data.station.detections.pageInfo.endCursor + '")';
+                if (paging == false) {
+                    break;
+                }
+            }
+            // Set detection name to common name if it exists, otherwise scientific name
+            for (let i = 0; i < detections.length; i++) {
+                try {
+                    detections[i].species = detections[i].species.commonName;
+                } catch (ex) {
+                    detections[i].species = detections[i].species.scientificName;
+                }
+            }
+            // Fill info table
+            document.getElementById("tid").textContent = station;
+            document.getElementById("tlat").textContent = detections[0].coords.lat;
+            document.getElementById("tlon").textContent = detections[0].coords.lon;
+            document.getElementById("tstart").textContent = detections[detections.length-1].timestamp;
+            document.getElementById("tend").textContent = detections[0].timestamp;
+            document.getElementById("tcount").textContent = detections.length;
+            
+            // Get totals for different certainty levels for each detection
+            var sums = {};
+            for (let i = 0; i < detections.length; i++) {
+                if (!(detections[i].species in sums)) {
+                    sums[detections[i].species] = {"unlikely": 0, "uncertain": 0, "very_likely": 0, "almost_certain": 0};
+                }
+                sums[detections[i].species][detections[i].certainty]++;
+            }
+            var spec_list = Object.keys(sums); // List of species found
+            spec_list.sort((a,b)=>CmpDetections(sums[a], sums[b]));
+            // Create chart for each species
+            for (let i = 0; i < spec_list.length; i++) {
+                let newCanv = document.createElement('canvas');
+                newCanv.id = `chart${i}`;
+                document.body.appendChild(newCanv);
+                new Chart(newCanv.id, ConfigCertainty(spec_list[i], sums));
+            }
+
+            function CmpDetections(dsum1, dsum2) {
+                // Comparitor to sort species in descending certainty counts
+                if (dsum1["almost_certain"]!=dsum2["almost_certain"]) {
+                    return dsum2["almost_certain"]-dsum1["almost_certain"];
+                }
+                if (dsum1["very_likely"]!=dsum2["very_likely"]) {
+                    return dsum2["very_likely"]-dsum1["very_likely"];
+                }
+                if (dsum1["uncertain"]!=dsum2["uncertain"]) {
+                    return dsum2["uncertain"]-dsum1["uncertain"];
+                }
+                if (dsum1["unlikely"]!=dsum2["unlikely"]) {
+                    return dsum2["unlikely"]-dsum1["unlikely"];
+                }
+                return 0;
+            }
+
+            function ConfigCertainty(species, sums) {
+                const data = {
+                    labels: ["unlikely", "uncertain", "very_likely", "almost_certain"],
+                    datasets: [
+                        {
+                        label: '',
+                        data: sums[species],
+                        }
+                    ]
+                };
+                const config = {
+                    type: 'bar',
+                    data: data,
+                    options: {
+                        indexAxis: 'y',
+                        elements: {
+                        bar: {
+                            borderWidth: 2,
+                        }
+                        },
+                        responsive: false,
+                        plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: true,
+                            text: species
+                        }
+                        }
+                    },
+                };
+                return config;
+            }
+        </script>
+        
+    </body>
+    
+</html>

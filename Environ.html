@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+
+<html>
+    
+    <head>
+        <meta charset="utf-8">
+            <title>PUC Weather</title>
+    </head>
+    
+    <body>
+        <div id="header">
+            <table width="400px">
+                <tr><td>Station ID</td><td id="tid"></td></tr>
+                <tr><td>Start</td><td id="tstart"></td></tr>
+                <tr><td>End</td><td id="tend"></td></tr>
+                <tr><td>Data Count</td><td id="tcount"></td></tr>
+            </table>
+        </div>
+        <!-- Load chart.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment-with-locales.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0"></script>
+        <script type="module">
+            document.getElementById("tid").textContent = "Loading...";
+            document.getElementById("tcount").textContent = "0";
+            var station = "2707"; // Set station id
+            var url = "https://app.birdweather.com/graphql";
+            var maxpage = 3; // Limit on pages to fetch
+            var detargs;
+            var dayQuery = `
+                {
+                    station(id: [station]) {
+                        sensors {
+                            environmentHistory[detargs] {
+                                nodes {
+                                    aqi
+                                    barometricPressure
+                                    eco2
+                                    humidity
+                                    soundPressureLevel
+                                    temperature
+                                    timestamp
+                                    voc
+                                }
+                                pageInfo {
+                                    endCursor
+                                    hasNextPage
+                                }
+                            }
+                        }
+                    }
+                }`;
+            var resp;
+            var obs = [];
+            var paging = true;
+            var thisQuery;
+            detargs = "";
+            for (let i = 0; i < maxpage; i++) {
+                thisQuery = dayQuery.replace("[detargs]", detargs);
+                thisQuery = thisQuery.replace("[station]", station);
+                resp = await fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    body: JSON.stringify({ query: thisQuery }),
+                    }).then(r => r.json());
+                obs = obs.concat(resp.data.station.sensors.environmentHistory.nodes);
+                document.getElementById("tcount").textContent = obs.length;
+                paging = resp.data.station.sensors.environmentHistory.pageInfo.hasNextPage;
+                detargs = '(after: "' +  resp.data.station.sensors.environmentHistory.pageInfo.endCursor + '")';
+                if (paging == false) {
+                    break;
+                }
+            }
+            obs = obs.reverse();
+            // Fill info table
+            document.getElementById("tid").textContent = station;
+            document.getElementById("tstart").textContent = obs[0].timestamp;
+            document.getElementById("tend").textContent = obs[obs.length-1].timestamp;
+            document.getElementById("tcount").textContent = obs.length;
+
+            var chartNames = ["AQI", "Pressure [in. Hg]", "Carbon [ppm]", "Humidity [%]", "Sound [in. Hg]", "Temperature [deg C]", "Volatile Org. Cmpds. [ppm]"];
+            var seriesNames = ["aqi", "barometricPressure", "eco2", "humidity", "soundPressureLevel", "temperature", "voc"];
+            for (let i = 0; i < chartNames.length; i++) {
+                let chartOps = ConfigSeries(chartNames[i], seriesNames[i], obs);
+                chartOps.options.scales.y.title.text = chartNames[i];
+                console.log(chartOps);
+
+                let newCanv = document.createElement('canvas');
+                document.body.appendChild(newCanv);
+                newCanv.width = 800;
+                newCanv.height = 500;
+                const myChart = new Chart(newCanv, {
+                    type: chartOps.type,
+                    data: chartOps.data,
+                    options: chartOps.options,
+                });
+            }
+
+            function ConfigSeries(title, series, obs) {
+                var data = Array(obs.length);
+                for (let i = 0; i < obs.length; i++) {
+                    data[i] = {
+                        "x": obs[i].timestamp,
+                        "y": obs[i][series]
+                    }
+                };
+                const config = {
+                    type: "line",
+                    data: {
+                        datasets: [{
+                            borderColor: "blue",
+                            backgroundColor: "blue",
+                            fill: false,
+                            data: data
+                        }]
+                    },
+                    options: {
+                        responsive: false,
+                        hoverMode: "index",
+                        stacked: false,
+                        title: null,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time',
+                                    font: {
+                                        size: 18
+                                    }
+                                },
+                                type: 'time',
+                                time: {
+                                    unit: 'hour',
+                                    displayFormats: {
+                                        hour: 'M/D, HH:mm'
+                                    },
+                                    tooltipFormat: 'D MMM YYYY - HH:mm:ss'
+                                },
+                                ticks: {
+                                    fonts: {
+                                        size: 18,
+                                    }
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'yAxis',
+                                    font: {
+                                        size: 18
+                                    }
+                                },
+                                type: 'linear',
+                                ticks: {
+                                    fonts: {
+                                        size: 18,
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                };
+                return config;
+            }
+        </script>
+        
+    </body>
+    
+</html>

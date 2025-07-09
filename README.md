@@ -5,6 +5,8 @@ On loading, the page Ticker will fetch the latest results from a given station u
 
 The page Stats creates histograms for each species using [Chart.js](https://www.chartjs.org/) showing the counts for the certainty values assigned by the PUC. The charts are sorted by the number of detections in descending certainty.
 
+The page Environ shows time series plots of the environmental data recorded by the PUC, including Air Quality Index and Atmospheric CO2, along with more traditional weather measurements.
+
 The BirdWeather app only shows detections of birds, and filters out those it deems unlikely. This viewer allows you to see the unfiltered detections, including non-bird sounds (such as engines and dogs) and spurious sounds associated with bonkers species (penguins in Michigan!).
 
 ## TODO:
